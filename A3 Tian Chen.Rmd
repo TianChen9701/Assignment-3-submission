@@ -1,0 +1,366 @@
+---
+title: "A3"
+author: "Tian Chen"
+date: "`r Sys.Date()"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Set up environment and import data
+
+```{r}
+#clear environment
+rm(list = ls())
+
+#import package
+require(tidyverse)
+#import data
+datsss <- read.csv("~/Desktop/Duke study/Econ613/A3/datsss.csv")
+datjss <- read.csv("~/Desktop/Duke study/Econ613/A3/datjss.csv")
+datstu_v2 <- read.csv("~/Desktop/Duke study/Econ613/A3/datstu_v2.csv")
+datsss_tbl <- datsss %>% as_tibble() #school
+datjss_tbl <- datjss %>% as_tibble() #geolocation of school
+datstu_v2_tbl <- datstu_v2 %>% as_tibble() #students
+
+```
+
+## Exercise 1
+###1. Number of Students, schools, programs
+
+```{r}
+#Number of students
+length(unique(datstu_v2$V1))
+
+#Number of Schools
+length(unique(datsss$schoolname))
+
+#Number of programs
+program <- select(datstu_v2_tbl, choicepgm1:choicepgm6)
+program_name <- names(program)
+unique_name <- vector()
+
+#Find unique program name
+for (i in c(1:length(program_name))) {
+  unique_col <- unique(select(program, program_name[i]))
+  unique_col <- rename(unique_col, program = program_name[i])
+  unique_name <- unique(rbind(unique_name, unique_col))
+}
+length(unique_name$program)
+```
+
+###2. Number of Choices
+```{r}
+school_program <- datstu_v2_tbl %>% select(V1, schoolcode1:choicepgm6)
+#transfer from wide to long
+program<- school_program %>% select(V1, choicepgm1:choicepgm6) %>% pivot_longer(cols = starts_with("choice"),
+                                                  names_to = "choice_progran",
+                                                  values_to = "program_name") 
+school <- school_program %>% select(V1, schoolcode1:schoolcode6) %>% pivot_longer(cols = starts_with("schoolcode"),
+                                                  names_to = "choice_school",
+                                                  values_to = "schoolcode")
+
+school_program <- cbind(school, program) %>% select(program_name, schoolcode) %>% unique()
+length(school_program$schoolcode)
+```
+
+###3. Number of students applying to at least one senior high school in the same district to home
+```{r}
+students_school <- datstu_v2_tbl %>% select(V1, schoolcode1:schoolcode6, jssdistrict) %>% pivot_longer(cols = starts_with("schoolcode"),
+                                                                                                       names_to = "choice_school",
+                                                                                                       values_to = "schoolcode")
+school_location <- datsss_tbl %>% select(schoolcode, sssdistrict)
+students_school <- left_join(students_school, school_location, by = "schoolcode") 
+students_school <- students_school %>% mutate(same_district = ifelse(students_school$jssdistrict == students_school$sssdistrict, 1, 0))
+#count the at least one same location
+students_school <- students_school %>% group_by(V1) %>% summarise(count = sum(same_district)) %>% filter(count>=1)
+length(students_school$V1)
+```
+
+###4. Number of students each senior high school admitted
+```{r}
+school_number <- datstu_v2_tbl %>% select(V1, schoolcode1:schoolcode6, rankplace) %>% drop_na() %>% pivot_longer(cols = starts_with("schoolcode"),
+                                                                                                       names_to = "choice_school",
+                                                                                                       values_to = "schoolcode")
+
+school_number <- school_number %>% mutate(choice_school_number = 0, 
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode1", 1),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode2", 2),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode3", 3),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode4", 4),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode5", 5),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode6", 6),
+                                              )
+school_number <- school_number %>% mutate(admitted = ifelse(school_number$choice_school_number == school_number$rankplace, 1, 0))
+school_number <- school_number %>% select(schoolcode, admitted) %>% group_by(schoolcode) %>% summarise(count = sum(admitted))
+
+```
+
+###5. The cutoff of senior high schools 
+```{r}
+school_score <- datstu_v2_tbl %>% select(V1, score, schoolcode1:schoolcode6, rankplace) %>% drop_na() %>% pivot_longer(cols = starts_with("schoolcode"),
+                                                                                                       names_to = "choice_school",
+                                                                                                       values_to = "schoolcode")
+
+school_score <- school_score %>% mutate(choice_school_number = 0, 
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode1", 1),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode2", 2),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode3", 3),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode4", 4),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode5", 5),
+                                              choice_school_number = replace(choice_school_number, choice_school == "schoolcode6", 6),
+                                              )
+school_score <- school_score %>% mutate(admitted = ifelse(school_score$choice_school_number == school_score$rankplace, 1, 0)) %>% filter(admitted == 1)
+
+school_cutoff <- school_score %>% select(score, schoolcode) %>% group_by(schoolcode) %>% summarise(cutoff = min(score))
+head(school_cutoff)
+```
+
+###6. The quality of senior high schools 
+```{r}
+school_quality <- school_score %>% select(score, schoolcode) %>% group_by(schoolcode) %>% summarise(quality = mean(score))
+head(school_quality)
+```
+
+## Exercise2 Data
+```{r}
+#(school, program)
+#transfer from wide to long
+program<- datstu_v2_tbl %>% select(V1, choicepgm1:choicepgm6) %>% pivot_longer(cols = starts_with("choice"),
+                                                  names_to = "choice_progran",
+                                                  values_to = "program_name") %>% select(!V1)
+school <- datstu_v2_tbl %>% select(!(choicepgm1:choicepgm6)) %>% pivot_longer(cols = starts_with("schoolcode"),
+                                                  names_to = "choice_school",
+                                                  values_to = "schoolcode")
+#find cutoff, quality, and size
+school_program <- cbind(program, school) %>% mutate(choice_school_number = 0, 
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode1", 1),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode2", 2),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode3", 3),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode4", 4),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode5", 5),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode6", 6),
+                                              )
+school_program <- school_program %>% mutate(admitted = ifelse(school_program$choice_school_number == school_program$rankplace, 1, 0))%>% filter(admitted == 1)
+school_program <- school_program %>% group_by(schoolcode, program_name) %>% summarize(cutoff = min(score, na.rm = TRUE),
+                                                                        quality = mean(score, na.rm = TRUE),
+                                                                        size = n())
+
+#merge (school, program) with datsss
+school_info <- datsss_tbl %>% select(-V1) %>% drop_na() %>% unique() %>% mutate(length = str_count(schoolname))
+#because of the data duplication, we use the longest name in each schoolcode as the school name
+school_info_unique <- school_info %>% group_by(schoolcode) %>% slice_max(length, n = 1) %>% select(-length)
+school_level_data <- left_join(school_program, school_info_unique, by = "schoolcode")
+head(school_level_data)
+
+```
+
+## Exercise3 Distance
+
+```{r}
+#individual school_program data
+ind_data <- cbind(school, program)
+#merge with school-level data
+ind_data <- left_join(ind_data, school_level_data, by = c("program_name", "schoolcode"))
+#merge with datjss (home location)
+location <- datjss_tbl %>% drop_na() %>% filter(jssdistrict != "")
+ind_withdistance <- left_join(ind_data,location, by = "jssdistrict") %>% rename(jsslong = point_x, jsslat = point_y)
+#calculate the distance 
+ind_data_withdistance <- ind_withdistance %>% mutate(distance = sqrt((69.172*(ssslong-jsslong)*cos(jsslat/53))^2 + (69.172*(ssslat-jsslat))^2))
+head(ind_data_withdistance)
+```
+
+##Exercise4 Dimensionality Reduction
+
+###Recode the schoolcode into its three digits(substr). Call this new variable scode_rev
+```{r}
+
+data <- ind_data_withdistance
+data <- data %>% mutate(scode_rev = substr(schoolcode, 1, 3))
+```
+
+###Recode the program variable into 4 categories. Call this new variable pgm_rev
+```{r}
+#Recode the program variable into 4 categories 
+data <- data %>% mutate(pgm_rev = ifelse(data$program_name == "General Arts"|data$program_name == "Visual Arts", "arts",
+                                         ifelse(data$program_name == "Business"|data$program_name == "Home Economics", "economics",
+                                                ifelse(data$program_name == "General Science", "science", "others"))))
+```
+
+###Create a new choice variable choice_rev
+```{r}
+data <- data %>% mutate(choice_rev = paste(data$scode_rev, data$pgm_rev))
+```
+
+###Recalculate the cutoff and the quality for each recoded choice
+```{r}
+cutoff_quality<- data %>% mutate(choice_school_number = 0, 
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode1", 1),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode2", 2),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode3", 3),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode4", 4),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode5", 5),
+                                            choice_school_number = replace(choice_school_number, choice_school == "schoolcode6", 6),
+                                              )
+cutoff_quality <- cutoff_quality %>% mutate(admitted = ifelse(cutoff_quality $choice_school_number == cutoff_quality $rankplace, 1, 0))%>% filter(admitted == 1)
+cutoff_quality <- cutoff_quality %>% group_by(choice_rev) %>% summarize(cutoff = min(score,na.rm = TRUE),
+                                                                        quality = min(score, na.rm = TRUE))
+data <- data %>% select(-cutoff, -quality) %>% left_join(cutoff_quality, by = "choice_rev")
+```
+
+###Consider the 20,000 highest score students
+```{r}
+top_20000_students <- data %>% select(V1, score) %>% unique() %>% arrange(desc(score)) 
+data_top20000 <- data %>% filter(V1 %in% top_20000_students$V1[1:20000])
+head(data_top20000)
+```
+
+##Exercise 5 First Model
+
+###Using the new data with recoded choices, we want to understand the effect of the student test score on his first choice.
+###Propose a model specification. Write the likelihood function.
+
+###likelihood function
+
+```{r}
+#I decided to use the conditional logit model to estimate the impacts of test scores on the probability of first choice
+## create a data set
+test_data <- data_top20000 %>% select(score, choice_rev, choice_school)
+test_data <- test_data %>% filter(choice_school == "schoolcode1") %>%mutate(choice=as.numeric(factor(choice_rev,ordered=TRUE))) %>% drop_na()
+data <- test_data
+##likelihood function
+like_fun = function(guess)
+{
+  score =  data$score
+  choice = data$choice
+  
+  row = nrow(data)
+  column = length(unique(choice))
+  ut = mat.or.vec(row,column)
+  
+  for (j in 1:column)
+  {
+    ut[,j] = guess[1] + guess[2]*score[j]
+  }
+  prob   = exp(ut)
+  prob   = sweep(prob,MARGIN=1,FUN="/",STATS=rowSums(prob))
+  prob2 = prob[,1]
+  prob2[prob2>0.999999] = 0.999999
+  prob2[prob2<0.000001] = 0.000001
+  like = sum(log(prob2))
+  return(-like)
+}
+
+
+#we guess the parameter, set the second one as negative
+guess <- runif(2) 
+guess[2] <- -guess[2]
+like_fun(guess = guess)
+
+
+#simulation
+optim(par = guess,fn=like_fun)
+
+#simulation
+#optim(par = guess,fn=like_fun)
+```
+
+
+###Question 6
+
+###Using the new data with recoded choices, we want to understand the effect of the school_quality on his first choice.
+###Propose a model specification. Write the likelihood function. 
+
+
+```{r}
+#I decided to use the conditional logit model to estimate the impacts of school quality on the probability of first choice
+## create a data set
+test_data <- data_top20000 %>% select(quality, choice_rev, choice_school)
+test_data <- test_data %>% filter(choice_school == "schoolcode1") %>%mutate(choice=as.numeric(factor(choice_rev,ordered=TRUE))) %>% drop_na()
+data <- test_data
+##likelihood function
+like_fun = function(guess)
+{
+  quality =  data$quality
+  choice = data$choice
+  
+  row = nrow(data)
+  column = length(unique(choice))
+  ut = mat.or.vec(row,column)
+  
+  for (j in 1:column)
+  {
+    ut[,j] = guess[1] + guess[2]*quality[j]
+  }
+  prob   = exp(ut)
+  prob   = sweep(prob,MARGIN=1,FUN="/",STATS=rowSums(prob))
+  prob2 = prob[,1]
+  prob2[prob2>0.999999] = 0.999999
+  prob2[prob2<0.000001] = 0.000001
+  like = sum(log(prob2))
+  return(-like)
+}
+
+
+#we guess the parameter, set the second one as negative
+guess <- -runif(2) 
+like_fun(guess = guess)
+
+#simulation
+optim(par = guess,fn=like_fun)
+```
+
+###Question 7 Counterfactual simulations
+
+##construct the data
+```{r}
+test_data <- data_top20000 %>% select(quality, choice_rev, choice_school)
+test_data <- test_data %>% filter(choice_school == "schoolcode1") %>%mutate(choice=as.numeric(factor(choice_rev,ordered=TRUE))) %>% drop_na()
+data <- test_data
+```
+##Which model is proper?
+```{r}
+#Schools' quality may affects the types of program they can provide to students. When excluding the other programs, school's quality should be less correlative to the choice outcome. Thus, we should use the first model
+```
+
+##Simulate the model
+```{r}
+
+like_fun = function(guess)
+{
+  score =  data$score
+  choice = data$choice
+  
+  row = nrow(data)
+  column = length(unique(choice))
+  ut = mat.or.vec(row,column)
+  
+  for (j in 1:column)
+  {
+    ut[,j] = guess[1] + guess[2]*score[j]
+  }
+  prob   = exp(ut)
+  prob   = sweep(prob,MARGIN=1,FUN="/",STATS=rowSums(prob))
+  prob2 = prob[,1]
+  prob2[prob2>0.999999] = 0.999999
+  prob2[prob2<0.000001] = 0.000001
+  like = sum(log(prob2))
+  return(-like)
+}
+
+
+#we guess the parameter, set the second one as negative
+guess <- runif(2) 
+guess[2] <- -guess[2]
+like_fun(guess = guess)
+
+
+#simulation
+optim(par = guess,fn=like_fun)
+```
+
